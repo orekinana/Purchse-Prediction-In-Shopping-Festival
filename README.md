@@ -1,1 +1,1 @@
-# Purchse-Prediction-in-shooping-festival
+# Purchse-Prediction-in-shopping-festival
