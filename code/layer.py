@@ -4,13 +4,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Attention(nn.Module):
-    def __init__(self, dimensions, attention_type='no'):
+    def __init__(self, dimensions):
         super(Attention, self).__init__()
 
         self.attn = nn.Linear(dimensions, dimensions, bias=False)
         self.softmax = nn.Softmax(dim=-1)
         self.tanh = nn.Tanh()
-        self.attention_type = attention_type
 
     def forward(self, query, context):
         """
@@ -29,13 +28,10 @@ class Attention(nn.Module):
 
         # (batch_size, dimensions) * (batch_size, query_len, dimensions) ->
         # (batch_size, query_len)
-        if self.attention_type == 'seq':
-            attention_scores = []
-            for batch in range(query.shape[0]):
-                attention_scores.append(query[batch] * context[batch])
-            attention_scores = torch.stack(attention_scores)
-        else:
-            attention_scores = torch.mul(query , context)
+        attention_scores = []
+        for batch in range(query.shape[0]):
+            attention_scores.append(query[batch] * context[batch])
+        attention_scores = torch.stack(attention_scores)
 
         attention_weights = self.softmax(attention_scores)
 
@@ -50,20 +46,41 @@ class Attention(nn.Module):
         return output, attention_weights
 
 
-class MLP(nn.Module):
-    # inputs_shape: [inputs number, input feature number]
-    def __init_(self, inputs_shape):
+class MLP_t(nn.Module):
+    def __init__(self, input_num, input_feature, output_feature):
         super(MLP, self).__init__()
-        self.input_num = inputs_shape[0]
-        self.feature_num = inputs_shape[1]
-        self.fc_list = [nn.Linear(self.input_num, 1) for i in range(self.feature_num)]
 
-    # inputs is a numpy array with shape (inputs number * input feature number)
+        self.input_num = input_num
+        self.feature_num = input_feature
+        self.output_feature = output_feature
+        self.fc_list = [nn.Linear(self.input_num, 1) for i in range(self.feature_num)]
+        self.fc = nn.Linear(self.feature_num, self.output_feature)
+
+    # inputs is a tensor with shape (inputs number * input_feature)
     def forward(self, inputs):
         output = []
         for i in range(self.feature_num):
             output.append(F.relu(self.fc_list[i](inputs[:, i])))
-        return np.array(output)
+        output = F.relu(self.fc(torch.stack(output)))
+        return output
+
+class MLP_s(nn.Module):
+    def __init__(self, input_nums, input_feature, output_feature):
+        super(MLP, self).__init__()
+
+        self.input_nums = input_nums
+        self.feature_num = input_feature
+        self.output_feature = output_feature
+        self.fc_list = [nn.Linear(self.input_nums[i], 1) for i in range(self.feature_num)]
+        self.fc = nn.Linear(self.feature_num, self.output_feature)
+
+    # inputs is a list of tensor which consist of multiple region feature with different size
+    def forward(self, inputs):
+        output = []
+        for i in range(self.feature_num):
+            output.append(F.relu(self.fc_list[i](inputs[i])))
+        output = F.relu(self.fc(torch.stack(output)))
+        return output
 
 
 class Pooling(nn.Module):

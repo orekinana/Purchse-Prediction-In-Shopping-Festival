@@ -7,55 +7,100 @@ import layer
 
 class TemporalRepresentation(nn.Module):
 
-    def __init__(self, order_feature=73, support_feature=73, out_feature=5, hidden_features={}, sample_L=10):
+    def __init__(self, order_feature=73, support_feature=73, embedding_out=50, sub_seq_in=50, sub_seq_out=40, \
+                    mlp_in=40, mlp_out=30, tem_att_in=30, seq_in=30, seq_out=10, fea_att_in=10, \
+                        fin_in=10, fin_out=5, sample_L=10):
         super(TemporalRepresentation, self).__init__()
+        self.time_num = 3
 
         self.L = sample_L
         # embedding data feature
-        self.target_feature_embedding_layer = nn.Linear(order_feature, hidden_features['concate'])
-        self.order_feature_embedding_layer = nn.Linear(order_feature, hidden_features['feature'])
-        self.support_feature_embedding_layer = nn.Linear(support_feature, hidden_features['feature'])
-        # seq deal
-        self.lstm_order = nn.LSTM(input_size=hidden_features['feature'], hidden_size=hidden_features['feature'], batch_first=True) 
-        self.lstm_support = nn.LSTM(input_size=hidden_features['feature'], hidden_size=hidden_features['feature'], batch_first=True)
-        # concante seqence data and attention to target
-        self.concate_layer = nn.Linear(hidden_features['feature'], hidden_features['feature'])
-        self.attention = layer.Attention(dimensions=hidden_features['feature'], attention_type='seq')
+        self.target_feature_embedding_layer = nn.Linear(order_feature, embedding_out)
+        self.order_feature_embedding_layer = nn.Linear(order_feature, embedding_out)
+        self.support_feature_embedding_layer = nn.Linear(support_feature, embedding_out)
+        # purchase seq embedding
+        self.lstm_order_recent = nn.LSTM(input_size=sub_seq_in, hidden_size=sub_seq_out, batch_first=True)
+        self.lstm_order_week = nn.LSTM(input_size=sub_seq_in, hidden_size=sub_seq_out, batch_first=True)
+        self.lstm_order_month = nn.LSTM(input_size=sub_seq_in, hidden_size=sub_seq_out, batch_first=True)
+        # shopping cart seq embedding
+        self.lstm_support_recent = nn.LSTM(input_size=sub_seq_in, hidden_size=sub_seq_out, batch_first=True)
+        self.lstm_support_week = nn.LSTM(input_size=sub_seq_in, hidden_size=sub_seq_out, batch_first=True)
+        self.lstm_support_month = nn.LSTM(input_size=sub_seq_in, hidden_size=sub_seq_out, batch_first=True)
+        # fusion different time feature
+        self.temporal_order_fusion_mlp = layer.MLP_t(input_num=self.time_num, input_feature=mlp_in, output_feature=mlp_out)
+        self.temporal_support_fusion_mlp = layer.MLP_t(input_num=self.time_num, input_feature=mlp_in, output_feature=mlp_out)
+        # temporal attention
+        self.attention_t_order = layer.Attention(dimensions=tem_att_in)
+        self.attention_t_support = layer.Attention(dimensions=tem_att_in)
         # seq deal the attentioned data
-        self.lstm_mixture = nn.LSTM(input_size=hidden_features['concate'], hidden_size=hidden_features['representation'], batch_first=True)
+        self.lstm_mixture_order = nn.LSTM(input_size=seq_in, hidden_size=seq_out, batch_first=True)
+        self.lstm_mixture_support = nn.LSTM(input_size=seq_in, hidden_size=seq_out, batch_first=True)
+        # feature attention
+        self.attention_f = layer.Attention(dimensions=fea_att_in)
         # obtian the representation of temporal
-        self.representation_layer_mu = nn.Linear(hidden_features['representation'], out_feature)
-        self.representation_layer_sigma = nn.Linear(hidden_features['representation'], out_feature)
+        self.representation_layer_mu = nn.Linear(fin_in, fin_out)
+        self.representation_layer_sigma = nn.Linear(fin_in, fin_out)
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
         return mu + eps*std
 
-    def forward(self, target_data, order_data, support_data=None):
-        embedding_ord = F.relu(self.order_feature_embedding_layer(order_data))
+    def forward(self, target_data, order_data_recent, order_data_week, order_data_month, \
+                 support_data_recent, support_data_week, support_data_month):
+
+        embedding_ord_recent = F.relu(self.order_feature_embedding_layer(order_data_recent))
+        embedding_ord_week = F.relu(self.order_feature_embedding_layer(order_data_week))
+        embedding_ord_month = F.relu(self.order_feature_embedding_layer(order_data_month))
+        
+        embedding_sup_recent = F.relu(self.support_feature_embedding_layer(support_data_recent))
+        embedding_sup_week = F.relu(self.support_feature_embedding_layer(support_data_week))
+        embedding_sup_month = F.relu(self.support_feature_embedding_layer(support_data_month))
+
         embedding_tar = F.relu(self.target_feature_embedding_layer(target_data))
 
-        seq_ord, (hn, cn) = self.lstm_order(embedding_ord)
-        # print(seq_ord.shape, hn.shape, cn.shape)
-        seq_ord = F.relu(seq_ord)
+        seq_ord_recent, (hn, cn) = self.lstm_order_recent(embedding_ord_recent)
+        seq_ord_week, (hn, cn) = self.lstm_order_week(embedding_ord_week)
+        seq_ord_month, (hn, cn) = self.lstm_order_month(embedding_ord_month)
 
-        if support_data == None:
-            seq_fea = seq_ord
-        else:
-            embedding_sup = F.relu(self.support_feature_embedding_layer(support_data)) 
-            seq_sup, hn, cn = F.relu(self.lstm_support(embedding_sup))
-            seq_fea= F.relu(self.concate_layer(torch.cat((seq_ord, seq_sup), dim=2)))
+        seq_ord_recent = F.relu(seq_ord_recent)
+        seq_ord_week = F.relu(seq_ord_week)
+        seq_ord_month = F.relu(seq_ord_month)
 
-        output, attention_weights = self.attention(embedding_tar, seq_fea)
-        att_representation = F.relu(output)
+        seq_sup_recent, (hn, cn) = self.lstm_support_recent(embedding_sup_recent)
+        seq_sup_week, (hn, cn) = self.lstm_support_week(embedding_sup_week)
+        seq_sup_month, (hn, cn) = self.lstm_support_month(embedding_sup_month)
 
-        output, (seq_mix, cn) = self.lstm_mixture(att_representation)
-        embedding_representation = torch.squeeze(seq_mix)
-        embedding_representation = torch.mean(embedding_representation, 0)
+        seq_sup_recent = F.relu(seq_sup_recent)
+        seq_sup_week = F.relu(seq_sup_week)
+        seq_sup_month = F.relu(seq_sup_month)
 
-        mu = self.representation_layer_mu(embedding_representation)
-        std = self.representation_layer_sigma(embedding_representation)
+        fusion_temporal_ord = torch.stack([seq_ord_recent, seq_ord_week, seq_ord_month])
+        fusion_temporal_sup = torch.stack([seq_sup_recent, seq_sup_week, seq_sup_month])
+
+        fusion_temporal_ord = F.relu(self.temporal_order_fusion_mlp(fusion_temporal_ord))
+        fusion_temporal_sup = F.relu(self.temporal_support_fusion_mlp(fusion_temporal_sup))
+
+        seq_ord, attention_weights_ord = self.attention_t_order(embedding_tar, fusion_temporal_ord)
+        seq_sup, attention_weights_sup = self.attention_t_support(embedding_tar, fusion_temporal_sup)
+
+        output, (fin_ord, cn) = self.lstm_mixture_order(seq_ord)
+        output, (fin_sup, cn) = self.lstm_mixture_support(seq_sup)
+
+        fin_ord = F.relu(fin_ord)
+        fin_sup = F.relu(fin_sup)
+
+        fusion_temporal = torch.cat([fin_ord, fin_sup])
+        fusion_temporal = torch.stack([fin_ord, fin_sup]).permute(1,0,2)
+        fusion_temporal, attention_weight_fusion = self.attention_f(embedding_tar, fusion_temporal)
+
+        representation = F.relu(fusion_temporal)
+
+        representation = torch.squeeze(representation)
+        representation = torch.mean(representation, 0)
+
+        mu = self.representation_layer_mu(representation)
+        std = self.representation_layer_sigma(representation)
 
         representation = []
         for i in range(self.L):
@@ -71,46 +116,60 @@ class TemporalRepresentation(nn.Module):
 
 class SpatioRepresentation(nn.Module):
 
-    def __init__(self, order_feature=73, region_feature=13, hidden_features=[10,5], out_feature=5, sample_L=10):
+    def __init__(self, order_feature=73, region_feature=13, embedding_out_tar=20, region_fea_list=[2,3,4,5], \
+                    mlp_in=10, mlp_out=5, att_r=5, fc_out=20, fin_in=5, fin_out=5, region_num = 15, sample_L=10):
         super(SpatioRepresentation, self).__init__()
-
-        self.net = [nn.Linear(region_feature, hidden_features[0]), nn.ReLU()]
-        for i in range(len(hidden_features)-1):
-            self.net.extend([nn.Linear(hidden_features[i], hidden_features[i+1]), nn.ReLU()])
-        self.net.extend([nn.Linear(hidden_features[-1], out_feature), nn.ReLU()])
-        self.net = torch.nn.Sequential(*self.net)
-
-        self.target_embedding_layer = nn.Linear(order_feature, out_feature)
-
-        self.attention = layer.Attention(dimensions=out_feature)
-
-        self.mix_layer = nn.ReLU(nn.Linear(out_feature, out_feature))
-
-        self.representation_layer_mu = nn.Linear(out_feature, out_feature)
-        self.representation_layer_sigma = nn.Linear(out_feature, out_feature)
-
         self.L = sample_L
+        self.region_num = region_num
+
+        self.target_feature_embedding_layer = nn.Linear(order_feature, embedding_out_tar)
+
+        self.mlp_regions = layer.MLP_s(input_nums=region_fea_list, input_feature=mlp_in, output_feature=mlp_out)
+
+        self.attention_region = layer.Attention(att_r)
+
+        self.region_fusion = nn.Linear(region_num, 1)
+
+        self.feature_fusion = nn.Linear(mlp_out*2+embedding_out_tar, fc_out)
+
+        self.representation_layer_mu = nn.Linear(fin_in, fin_out)
+        self.representation_layer_sigma = nn.Linear(fin_in, fin_out)
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
         return mu + eps*std
     
-    def forward(self, target_data, feature_data):
-        embedding_fea = self.net(feature_data)
-        embedding_tar = self.target_embedding_layer(target_data)
-        # print(embedding_tar.shape, embedding_fea.shape)
+    def forward(self, target_data, neighbor_region_data, current_region_data):
+        embedding_tar = F.relu(self.target_feature_embedding_layer(target_data))
 
-        att_embedding, attention_weights = self.attention(embedding_tar, embedding_fea)
-        att_embedding = F.relu(att_embedding)
+        neighbor_regions = []
+        for i in range(self.region_num):
+            neighbor_regions.append(F.relu(self.mlp_regions(neighbor_region_data[i])))
+        neighbor_regions = torch.stack(neighbor_regions)
+        # region_num * batch_size * region_feature -> batch * region_num * region_feature
+        neighbor_regions = neighbor_regions.permute(1,0,2)
+        
+        att_neighbor_regions, attention_weight_region = self.attention_region(embedding_tar, neighbor_regions)
 
-        embedding_representation = self.mix_layer(att_embedding)
-        embedding_representation = torch.mean(embedding_representation, 0)
+        # fusion multiple region into one representation
+        # batch * region_num * region_feature -> batch * region_feature
+        att_neighbor_regions = att_neighbor_regions.permute(0,2,1)
+        neighbor_region = F.relu(self.region_fusion(att_neighbor_regions))
+        att_neighbor_regions = torch.squeeze(att_neighbor_regions.permute(0,2,1))
 
-        embedding_representation = torch.squeeze(embedding_representation)
+        current_region = F.relu(self.mlp_regions(current_region_data))
 
-        mu = self.representation_layer_mu(embedding_representation)
-        std = self.representation_layer_sigma(embedding_representation)
+        feature_embedding = torch.cat([current_region, neighbor_region, embedding_tar])
+
+        representation = F.relu(self.feature_fusion(feature_embedding))
+     
+        representation = torch.mean(representation, 0)
+
+        representation = torch.squeeze(representation)
+
+        mu = self.representation_layer_mu(representation)
+        std = self.representation_layer_sigma(representation)
 
         representation = []
         for i in range(self.L):
@@ -126,26 +185,32 @@ class SpatioRepresentation(nn.Module):
 
 class Generation(nn.Module):
 
-    def __init__(self, order_feature=73, POIs_feature=10, region_feature=13, \
-                         G_hidden_features=[50,30,10], S_hidden_features=[10,5], T_hidden_features={}, \
-                            G_output_features=5, S_output_features=5, T_output_features=5, \
-                                support_feature=73, sample_L=10):
+    def __init__(self, order_feature=73, support_feature=73, embedding_out=50, sub_seq_in=50, sub_seq_out=40, mlp_in_t=40, mlp_out_t=30, \
+                        tem_att_in=30, seq_in=30, seq_out=10, fea_att_in=10, fin_in_t=10, fin_out_t=5, \
+                            region_feature=13, embedding_out_tar=20, region_fea_list=[2,3,4,5], mlp_in_s=10, mlp_out_s=5, \
+                                att_r=5, fc_out=20, fin_in_s=5, fin_out_s=5, region_num = 15, \
+                                    G_hidden_features=[50,30,10], G_output_features=5, sample_L=10):
         
         super(Generation, self).__init__()
 
-        self.spatio_representation_layer = SpatioRepresentation(order_feature, region_feature, S_hidden_features, S_output_features, sample_L)
+        self.temporal_representation_layer = TemporalRepresentation(order_feature, support_feature, embedding_out, sub_seq_in, sub_seq_out, mlp_in_t, mlp_out_t, \
+                                                                        tem_att_in, seq_in, seq_out, fea_att_in, fin_in_t, fin_out_t, sample_L)
 
-        self.temporal_representation_layer = TemporalRepresentation(order_feature, support_feature, T_output_features, T_hidden_features, sample_L)
+        self.spatio_representation_layer = SpatioRepresentation(order_feature, region_feature, embedding_out_tar, region_fea_list, mlp_in_s, mlp_out_s, \
+                                                                    att_r, fc_out, fin_in_s, fin_out_s, region_num, sample_L)
 
-        self.support_feature_embedding_layer = nn.LSTM(support_feature, T_output_features, num_layers=1, batch_first=True)
-        self.order_feature_embedding_layer = nn.LSTM(order_feature, T_output_features, num_layers=1, batch_first=True)
-        self.region_embedding_layer = nn.Linear(region_feature, S_output_features)
-        self.poi_embedding_layer = nn.Linear(POIs_feature, S_output_features)
+        
 
-        self.current_embedding_layer = nn.Linear(2*(T_output_features+S_output_features), G_hidden_features[0])
-        self.current_embedding_layer_without_pois_and_support = nn.Linear(T_output_features+S_output_features, G_hidden_features[0])
+        self.support_feature_embedding_layer = nn.LSTM(support_feature, fin_out_t, num_layers=1, batch_first=True)
+        self.order_feature_embedding_layer = nn.LSTM(order_feature, fin_out_t, num_layers=1, batch_first=True)
+        self.region_embedding_layer = nn.Linear(region_feature, fin_out_s)
 
-        self.mix_net = [nn.Linear(T_output_features + S_output_features + G_hidden_features[0], G_hidden_features[0]), nn.ReLU()]
+        # remain fix ... tomorro
+
+        self.current_embedding_layer = nn.Linear(2*(fin_out_t+fin_out_s), G_hidden_features[0])
+        self.current_embedding_layer_without_pois_and_support = nn.Linear(fin_out_t+fin_out_s, G_hidden_features[0])
+
+        self.mix_net = [nn.Linear(fin_out_t + fin_out_s + G_hidden_features[0], G_hidden_features[0]), nn.ReLU()]
         # print(T_output_features + S_output_features + G_hidden_features[0], G_hidden_features[0])
         for i in range(len(G_hidden_features)-1):
             self.mix_net.extend([nn.Linear(G_hidden_features[i], G_hidden_features[i+1]), nn.ReLU()])
