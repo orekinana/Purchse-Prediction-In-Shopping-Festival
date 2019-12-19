@@ -9,9 +9,9 @@ class TemporalRepresentation(nn.Module):
 
     def __init__(self, order_feature=73, support_feature=73, embedding_out=50, sub_seq_in=50, sub_seq_out=40, \
                     mlp_in=40, mlp_out=30, tem_att_in=30, seq_in=30, seq_out=10, fea_att_in=10, \
-                        fin_in=10, fin_out=5, sample_L=10):
+                        fin_in=10, fin_out=5, sample_L=10, time_num=3):
         super(TemporalRepresentation, self).__init__()
-        self.time_num = 3
+        self.time_num = time_num
 
         self.L = sample_L
         # embedding data feature
@@ -117,7 +117,7 @@ class TemporalRepresentation(nn.Module):
 class SpatioRepresentation(nn.Module):
 
     def __init__(self, order_feature=73, region_feature=13, embedding_out_tar=20, region_fea_list=[2,3,4,5], \
-                    mlp_in=10, mlp_out=5, att_r=5, fc_out=20, fin_in=5, fin_out=5, region_num = 15, sample_L=10):
+                    mlp_in=10, mlp_out=5, att_r=5, fc_out=20, fin_in=20, fin_out=5, region_num = 15, sample_L=10):
         super(SpatioRepresentation, self).__init__()
         self.L = sample_L
         self.region_num = region_num
@@ -130,7 +130,7 @@ class SpatioRepresentation(nn.Module):
 
         self.region_fusion = nn.Linear(region_num, 1)
 
-        self.feature_fusion = nn.Linear(mlp_out*2+embedding_out_tar, fc_out)
+        self.feature_fusion = nn.Linear(mlp_out, fc_out)
 
         self.representation_layer_mu = nn.Linear(fin_in, fin_out)
         self.representation_layer_sigma = nn.Linear(fin_in, fin_out)
@@ -143,26 +143,23 @@ class SpatioRepresentation(nn.Module):
     def forward(self, target_data, neighbor_region_data, current_region_data):
         embedding_tar = F.relu(self.target_feature_embedding_layer(target_data))
 
-        neighbor_regions = []
+        regions = []
         for i in range(self.region_num):
-            neighbor_regions.append(F.relu(self.mlp_regions(neighbor_region_data[i])))
-        neighbor_regions = torch.stack(neighbor_regions)
+            regions.append(F.relu(self.mlp_regions(neighbor_region_data[i])))
+        regions = torch.stack(regions)
         # region_num * batch_size * region_feature -> batch * region_num * region_feature
-        neighbor_regions = neighbor_regions.permute(1,0,2)
+        regions = regions.permute(1,0,2)
         
-        att_neighbor_regions, attention_weight_region = self.attention_region(embedding_tar, neighbor_regions)
+        att_regions, attention_weight_region = self.attention_region(embedding_tar, regions)
 
         # fusion multiple region into one representation
         # batch * region_num * region_feature -> batch * region_feature
-        att_neighbor_regions = att_neighbor_regions.permute(0,2,1)
-        neighbor_region = F.relu(self.region_fusion(att_neighbor_regions))
-        att_neighbor_regions = torch.squeeze(att_neighbor_regions.permute(0,2,1))
+        att_regions = att_regions.permute(0,2,1)
+        att_regions = F.relu(self.region_fusion(att_regions))
+        att_regions = torch.squeeze(att_regions.permute(0,2,1))
 
-        current_region = F.relu(self.mlp_regions(current_region_data))
-
-        feature_embedding = torch.cat([current_region, neighbor_region, embedding_tar])
-
-        representation = F.relu(self.feature_fusion(feature_embedding))
+        region_representation = F.relu(self.feature_fusion(att_regions))
+        representation = region_representation * embedding_tar
      
         representation = torch.mean(representation, 0)
 
@@ -182,39 +179,48 @@ class SpatioRepresentation(nn.Module):
         return representation
 
 
-
 class Generation(nn.Module):
 
-    def __init__(self, order_feature=73, support_feature=73, embedding_out=50, sub_seq_in=50, sub_seq_out=40, mlp_in_t=40, mlp_out_t=30, \
+    def __init__(self, order_feature=73, support_feature=73, region_feature=13, G_input=5, G_hidden=[25,50], G_output=73, sample_L=10, time_num=3, \
+                        embedding_out=50, sub_seq_in=50, sub_seq_out=40, mlp_in_t=40, mlp_out_t=30, \
                         tem_att_in=30, seq_in=30, seq_out=10, fea_att_in=10, fin_in_t=10, fin_out_t=5, \
-                            region_feature=13, embedding_out_tar=20, region_fea_list=[2,3,4,5], mlp_in_s=10, mlp_out_s=5, \
-                                att_r=5, fc_out=20, fin_in_s=5, fin_out_s=5, region_num = 15, \
-                                    G_hidden_features=[50,30,10], G_output_features=5, sample_L=10):
+                        embedding_out_tar=20, region_fea_list=[2,3,4,5], mlp_in_s=10, mlp_out_s=5, \
+                        att_r=5, fc_out=20, fin_in_s=5, fin_out_s=5, region_num=15):
         
         super(Generation, self).__init__()
 
+        self.time_num = time_num
+
         self.temporal_representation_layer = TemporalRepresentation(order_feature, support_feature, embedding_out, sub_seq_in, sub_seq_out, mlp_in_t, mlp_out_t, \
-                                                                        tem_att_in, seq_in, seq_out, fea_att_in, fin_in_t, fin_out_t, sample_L)
+                                                                        tem_att_in, seq_in, seq_out, fea_att_in, fin_in_t, fin_out_t, sample_L, time_num)
 
         self.spatio_representation_layer = SpatioRepresentation(order_feature, region_feature, embedding_out_tar, region_fea_list, mlp_in_s, mlp_out_s, \
                                                                     att_r, fc_out, fin_in_s, fin_out_s, region_num, sample_L)
 
-        
+        self.support_recent_embedding_layer = nn.LSTM(support_feature, fin_out_t, num_layers=1, batch_first=True)
+        self.support_week_embedding_layer = nn.LSTM(support_feature, fin_out_t, num_layers=1, batch_first=True)
+        self.support_month_embedding_layer = nn.LSTM(support_feature, fin_out_t, num_layers=1, batch_first=True)
+        self.temporal_order_fusion_mlp = layer.MLP_t(input_num=self.time_num, input_feature=mlp_in_t, output_feature=mlp_out_t)
+        self.support_embedding_layer = nn.LSTM(seq_in, seq_out, num_layers=1, batch_first=True)
+        self.support_representation_layer = nn.Linear(seq_out, fin_out_t)
 
-        self.support_feature_embedding_layer = nn.LSTM(support_feature, fin_out_t, num_layers=1, batch_first=True)
-        self.order_feature_embedding_layer = nn.LSTM(order_feature, fin_out_t, num_layers=1, batch_first=True)
-        self.region_embedding_layer = nn.Linear(region_feature, fin_out_s)
+        self.order_recent_embedding_layer = nn.LSTM(order_feature, fin_out_t, num_layers=1, batch_first=True)
+        self.order_week_embedding_layer = nn.LSTM(order_feature, fin_out_t, num_layers=1, batch_first=True)
+        self.order_month_embedding_layer = nn.LSTM(order_feature, fin_out_t, num_layers=1, batch_first=True)
+        self.temporal_support_fusion_mlp = layer.MLP_t(input_num=self.time_num, input_feature=mlp_in_t, output_feature=mlp_out_t)
+        self.order_embedding_layer = nn.LSTM(seq_in, seq_out, num_layers=1, batch_first=True)
+        self.order_representation_layer = nn.Linear(seq_out, fin_out_t)
 
-        # remain fix ... tomorro
+        self.mlp_regions = layer.MLP_s(input_nums=region_fea_list, input_feature=mlp_in_s, output_feature=mlp_out_s)
+        self.region_fusion = nn.Linear(region_num, 1)
+        self.region_representation_layer = nn.Linear(region_feature, fin_out_s)
 
-        self.current_embedding_layer = nn.Linear(2*(fin_out_t+fin_out_s), G_hidden_features[0])
-        self.current_embedding_layer_without_pois_and_support = nn.Linear(fin_out_t+fin_out_s, G_hidden_features[0])
+        self.current_embedding_layer = nn.Linear(2*fin_out_t+fin_out_s, G_input)
 
-        self.mix_net = [nn.Linear(fin_out_t + fin_out_s + G_hidden_features[0], G_hidden_features[0]), nn.ReLU()]
-        # print(T_output_features + S_output_features + G_hidden_features[0], G_hidden_features[0])
-        for i in range(len(G_hidden_features)-1):
-            self.mix_net.extend([nn.Linear(G_hidden_features[i], G_hidden_features[i+1]), nn.ReLU()])
-        self.mix_net.extend([nn.Linear(G_hidden_features[-1], G_output_features), nn.ReLU()])
+        self.mix_net = [nn.Linear(G_input+fin_out_t+fin_out_s, G_hidden[0]), nn.ReLU()]
+        for i in range(len(G_hidden)-1):
+            self.mix_net.extend([nn.Linear(G_hidden[i], G_hidden[i+1]), nn.ReLU()])
+        self.mix_net.extend([nn.Linear(G_hidden[-1], G_output), nn.ReLU()])
         self.mix_net = torch.nn.Sequential(*self.mix_net)
 
     
