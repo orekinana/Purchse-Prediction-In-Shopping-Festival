@@ -81,7 +81,7 @@ if __name__ == "__main__":
    
     # train
     areas = ['怀柔区', '崇文区', '门头沟', '昌平区', '大兴区', '朝阳区', '延庆区', '宣武区', '石景山区', '平谷区', '西城区', '海淀区', '房山区', '密云区', '东城区', '顺义区', '通州区', '丰台区']
-    times = [0, 1, 10, 11, 12]
+    times = [0, 1, 618, 10, 11, 12]
 
     model = G(**model_configs.MODEL_CONFIGS['jd'])
     train = Trainer(model, args)

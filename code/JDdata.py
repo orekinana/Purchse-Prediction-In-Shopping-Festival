@@ -7,6 +7,7 @@ from sklearn.preprocessing import MinMaxScaler
 import os
 import torch
 import datetime
+import json
 
 
 class JD(Dataset):
@@ -16,22 +17,22 @@ class JD(Dataset):
         self.historical = load_data_dynamic('purchase', seqlen, area, time)
         self.support = load_data_dynamic('cart', seqlen, area, time)
 
-        # self.region = load_data_region('region', seqlen, area, time)
+        self.static = load_data_static('static', seqlen, area, time)
 
         self.target = load_data_target('purchase', seqlen, area, time)  
 
 
-        print('Historical data:', self.historical.shape, 'Support data:', self.support.shape, 'Target data:', self.target.shape)
+        print('Historical data:', self.historical.shape, 'Support data:', self.support.shape, 'Target data:', self.target.shape, 'Static data:', self.static.shape)
 
     def __getitem__(self, index):
         historical = self.historical[:,index]
         support = self.support[index]
 
-        # region = self.region[index]
+        static = self.static[index]
 
         target = self.target[index]
 
-        return torch.FloatTensor(historical), torch.FloatTensor(support), torch.FloatTensor(target)
+        return torch.FloatTensor(historical), torch.FloatTensor(support), torch.FloatTensor(target), torch.FloatTensor(static)
 
     def __len__(self):
         return len(self.target)
@@ -50,6 +51,8 @@ def getEveryDay(begin_date,end_date):
             date_flag.append(12)
         elif begin_date.strftime("%m-%d") >= '10-01' and begin_date.strftime("%m-%d") <= '10-07':
             date_flag.append(10)
+        elif begin_date.strftime("%m-%d") >= '06-01' and begin_date.strftime("%m-%d") <= '06-20':
+            date_flag.append(618)
         elif begin_date.strftime("%w") == '0' or begin_date.strftime("%w") == '6':
             date_flag.append(1)
         else:
@@ -62,13 +65,13 @@ def load_data_dynamic(data_type, seq_len, area, time):
     begin_date, end_date = '2015-01-01', '2019-12-18'
     datadir = '../data/spatial/' + data_type
     date_list, date_flag = getEveryDay(begin_date, end_date)
-
+    output = []
     if area == 'all':
         regions = os.listdir(datadir)
         regions.sort()
         date_flag = np.array(date_flag)
         time_indexs = np.where(date_flag == time)[0]
-        output = []
+        
         for region in regions:
             data = np.load(datadir + '/' + region) 
             for time_index in time_indexs:
@@ -83,7 +86,6 @@ def load_data_dynamic(data_type, seq_len, area, time):
         
     if time == 'all': # deal all time in one area
         data = np.load(datadir + '/' + area + '.npy')
-        output = []
         for i in range(seq_len, len(date_list)):
             output.append(data[i-seq_len:i])
 
@@ -116,22 +118,38 @@ def load_data_target(data_type, seq_len, area, time):
     # output = scaler.transform(output)
     return output
 
-def load_data_region(data_type, seq_len, area, time):
+def load_data_static(data_type, seq_len, area, time):
     begin_date, end_date = '2015-01-01', '2019-12-18'
     datadir = '../data/spatial/' + data_type
     date_list, date_flag = getEveryDay(begin_date, end_date)
-    data = pd.read_csv(datadir + data_type + '.csv')
+
+    # select by region
+    with open(datadir + '/new_poi.json', 'r') as f:
+        poi = json.load(f)
+    # select by year+region
+    with open(datadir + '/user_portrait.json', 'r') as f:
+        user = json.load(f)
+    festival = np.load(datadir + '/festival_feature.npy') # select by date (same with date_flag index)
+    
+    output = []
     if area == 'all':
-        regions = os.listdir(datadir)
+        regions = os.listdir('../data/spatial/purchase')
         regions.sort()
+        date_flag = np.array(date_flag)
+        time_indexs = np.where(date_flag == time)[0]
         for region in regions:
-            pad_num = len(np.where(date_flag == time)[0])
-            output = np.pad(data[data['市'] == region.split('.')[0]],((pad_num,0),(0,0)),'edge')
+            region = region.split('.')[0]
+            for time_index in time_indexs:
+                year = 2015 + int(time_index / 365)
+                output.append(poi[region] + user[str(year) + region] + list(festival[time_index]))
     if time == 'all':
-        pad_num = len(date_flag) - seq_len
-        output = np.pad(data[data['市'] == area],((pad_num,0),(0,0)),'edge')
+        for i in range(seq_len, len(date_list)):
+            year = 2015 + int(i / 365)
+            output.append(poi[area] + user[str(year) + area] + list(festival[i]))
+    
+    output = np.array(output)
     return output
 
 
 if __name__ == "__main__":
-    dataset = JD(seqlen=7, area='all', time=12)
+    dataset = JD(seqlen=7, area='all', time=618)

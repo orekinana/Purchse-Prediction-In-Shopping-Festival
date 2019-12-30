@@ -16,6 +16,8 @@ def getEveryDay(begin_date,end_date):
             date_flag.append(12)
         elif begin_date.strftime("%m-%d") >= '10-01' and begin_date.strftime("%m-%d") <= '10-07':
             date_flag.append(10)
+        elif begin_date.strftime("%m-%d") >= '06-01' and begin_date.strftime("%m-%d") <= '06-18':
+            date_flag.append(618)
         elif begin_date.strftime("%w") == '0' or begin_date.strftime("%w") == '6':
             date_flag.append(1)
         else:
