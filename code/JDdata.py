@@ -25,14 +25,15 @@ class JD(Dataset):
         print('Historical data:', self.historical.shape, 'Support data:', self.support.shape, 'Target data:', self.target.shape, 'Static data:', self.static.shape)
 
     def __getitem__(self, index):
-        historical = self.historical[:,index]
+        historical = self.historical[index]
+
         support = self.support[index]
 
         static = self.static[index]
 
         target = self.target[index]
 
-        return torch.FloatTensor(historical), torch.FloatTensor(support), torch.FloatTensor(target), torch.FloatTensor(static)
+        return torch.FloatTensor(historical), torch.FloatTensor(support), torch.FloatTensor(static), torch.FloatTensor(target)
 
     def __len__(self):
         return len(self.target)

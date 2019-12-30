@@ -48,38 +48,44 @@ class Attention(nn.Module):
 
 class MLP_t(nn.Module):
     def __init__(self, input_num, input_feature, output_feature):
-        super(MLP, self).__init__()
+        super(MLP_t, self).__init__()
 
         self.input_num = input_num
         self.feature_num = input_feature
         self.output_feature = output_feature
-        self.fc_list = [nn.Linear(self.input_num, 1) for i in range(self.feature_num)]
+        self.fc_t = nn.Linear(self.input_num, 1)
         self.fc = nn.Linear(self.feature_num, self.output_feature)
 
     # inputs is a tensor with shape (inputs number * input_feature)
     def forward(self, inputs):
-        output = []
-        for i in range(self.feature_num):
-            output.append(F.relu(self.fc_list[i](inputs[:, i])))
-        output = F.relu(self.fc(torch.stack(output)))
+        inputs = inputs.permute(1,2,3,0)
+        output = F.relu(self.fc_t(inputs))
+        output = F.relu(self.fc(torch.squeeze(output)))
         return output
 
 class MLP_s(nn.Module):
     def __init__(self, input_nums, input_feature, output_feature):
-        super(MLP, self).__init__()
+        super(MLP_s, self).__init__()
 
         self.input_nums = input_nums
         self.feature_num = input_feature
         self.output_feature = output_feature
-        self.fc_list = [nn.Linear(self.input_nums[i], 1) for i in range(self.feature_num)]
+        self.fc_list = [nn.Linear(self.input_nums[i], 1) for i in range(len(input_nums))]
+        print(self.fc_list)
         self.fc = nn.Linear(self.feature_num, self.output_feature)
 
     # inputs is a list of tensor which consist of multiple region feature with different size
     def forward(self, inputs):
         output = []
-        for i in range(self.feature_num):
-            output.append(F.relu(self.fc_list[i](inputs[i])))
-        output = F.relu(self.fc(torch.stack(output)))
+        for i in range(len(self.input_nums)):
+            if i == 0:
+                temp = F.relu(self.fc_list[i](inputs[:, 0: self.input_nums[i]]))
+                output.append(temp)
+            else:
+                temp = F.relu(self.fc_list[i](inputs[:, self.input_nums[i-1]:self.input_nums[i]+self.input_nums[i-1]]))
+                output.append(temp)
+        output = torch.squeeze(torch.stack(output)).permute(1,0)
+        output = F.relu(self.fc(output))
         return output
 
 

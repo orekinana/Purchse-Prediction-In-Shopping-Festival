@@ -33,11 +33,12 @@ class Trainer():
         total_tr_loss = 0
         for epoch in range(self.args.epochs):
             tr_loss = 0
-            for batch_idx, (temporal, spatio, target) in enumerate(self.dataloader):
+            print(len(self.dataloader))
+            for batch_idx, (temporal, support, static, target) in enumerate(self.dataloader):
                 print('target shape:', target.shape)
                 data_size = target.shape[1]
                 self.model.train()
-                pred = self.model(target, temporal, spatio)
+                pred = self.model(temporal, support, static, target)
                 loss = self.model.loss_function(target, pred)
                 loss = loss.sum()
                 self.optimizer.zero_grad()

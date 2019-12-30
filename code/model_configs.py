@@ -1,4 +1,4 @@
-MODEL_CONFIGS : {
+MODEL_CONFIGS = {
     "jd":
     {
         # generation parameter
@@ -23,11 +23,11 @@ MODEL_CONFIGS : {
         'fea_att_in':10, 
         'fin_in_t':10, 
         'fin_out_t':5,
-        
+
         # spatial parameter
         'embedding_out_tar':20, 
         'region_fea_list':[23,27,4], 
-        'mlp_in_s':10, 
+        'mlp_in_s':3, # len(region_fea_list)
         'mlp_out_s':5,
         'att_r':5, 
         'fc_out':20, 
