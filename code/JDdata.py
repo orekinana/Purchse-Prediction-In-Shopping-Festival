@@ -14,26 +14,39 @@ class JD(Dataset):
     def __init__(self, seqlen, area, time):
         self.seqlen = seqlen
 
-        self.historical = load_data_dynamic('purchase', seqlen, area, time)
-        self.support = load_data_dynamic('cart', seqlen, area, time)
+        self.historical1 = load_data_dynamic('purchase', seqlen, area, time, 1)
+        self.historical2 = load_data_dynamic('purchase', seqlen, area, time, 7)
+        self.historical3 = load_data_dynamic('purchase', seqlen, area, time, 30)
+
+        self.support1 = load_data_dynamic('cart', seqlen, area, time, 1)
+        self.support2 = load_data_dynamic('cart', seqlen, area, time, 7)
+        self.support3 = load_data_dynamic('cart', seqlen, area, time, 30)
 
         self.static = load_data_static('static', seqlen, area, time)
 
         self.target = load_data_target('purchase', seqlen, area, time)  
 
 
-        print('Historical data:', self.historical.shape, 'Support data:', self.support.shape, 'Target data:', self.target.shape, 'Static data:', self.static.shape)
+        print('Historical1 data:', self.historical1.shape, 'Historical2 data:', self.historical2.shape, 'Historical3 data:', self.historical3.shape, \
+                'Support1 data:', self.support1.shape, 'Support2 data:', self.support2.shape, 'Support3 data:', self.support3.shape, \
+                    'Target data:', self.target.shape, 'Static data:', self.static.shape)
 
     def __getitem__(self, index):
-        historical = self.historical[index]
+        historical1 = self.historical1[index]
+        historical2 = self.historical2[index]
+        historical3 = self.historical3[index]
 
-        support = self.support[index]
+        support1 = self.support1[index]
+        support2 = self.support2[index]
+        support3 = self.support3[index]
 
         static = self.static[index]
 
         target = self.target[index]
 
-        return torch.FloatTensor(historical), torch.FloatTensor(support), torch.FloatTensor(static), torch.FloatTensor(target)
+        return torch.FloatTensor(historical1), torch.FloatTensor(historical2), torch.FloatTensor(historical3), \
+                torch.FloatTensor(support1), torch.FloatTensor(support2), torch.FloatTensor(support3), \
+                    torch.FloatTensor(static), torch.FloatTensor(target)
 
     def __len__(self):
         return len(self.target)
@@ -41,12 +54,15 @@ class JD(Dataset):
 def getEveryDay(begin_date,end_date):
     date_list = []
     date_flag = []
+    skip_day = begin_date
     begin_date = datetime.datetime.strptime(begin_date, "%Y-%m-%d")
     end_date = datetime.datetime.strptime(end_date,"%Y-%m-%d")
     while begin_date <= end_date:
         date_str = begin_date.strftime("%Y-%m-%d")
         date_list.append(date_str)
-        if begin_date.strftime("%m-%d") >= '11-01' and begin_date.strftime("%m-%d") <= '11-11':
+        if begin_date.strftime("%Y-%m-%d") == skip_day:
+            date_flag.append(-1)
+        elif begin_date.strftime("%m-%d") >= '11-01' and begin_date.strftime("%m-%d") <= '11-11':
             date_flag.append(11)
         elif begin_date.strftime("%m-%d") >= '12-01' and begin_date.strftime("%m-%d") <= '12-12':
             date_flag.append(12)
@@ -61,7 +77,7 @@ def getEveryDay(begin_date,end_date):
         begin_date += datetime.timedelta(days=1)
     return date_list, date_flag
 
-def load_data_dynamic(data_type, seq_len, area, time):
+def load_data_dynamic(data_type, seq_len, area, time, skip_day):
     # data shape: batch * seqlen * feature
     begin_date, end_date = '2015-01-01', '2019-12-18'
     datadir = '../data/spatial/' + data_type
@@ -75,44 +91,58 @@ def load_data_dynamic(data_type, seq_len, area, time):
         
         for region in regions:
             data = np.load(datadir + '/' + region) 
+            scaler = MinMaxScaler().fit(data)
+            data = scaler.transform(data)
             for time_index in time_indexs:
-                if time_index >= seq_len:
-                    output.append(data[time_index-seq_len:time_index])
-                elif time_index > 0 and time_index < seq_len:
-                    pad_num = seq_len-time_index
-                    temp_data = data[:time_index]
-                    output.append(np.pad(temp_data,((pad_num,0),(0,0)),'edge'))
-                else:
-                    continue
+                has_num = int(time_index / skip_day) + 1
+                if has_num >= seq_len:
+                    has_num = seq_len
+                pad_num = seq_len - has_num
+                temp = []
+                for i in range(has_num):
+                    temp.append(data[time_index-i*skip_day-1])
+                output.append(np.pad(np.array(temp),((pad_num,0),(0,0)),'edge'))
         
     if time == 'all': # deal all time in one area
         data = np.load(datadir + '/' + area + '.npy')
-        for i in range(seq_len, len(date_list)):
-            output.append(data[i-seq_len:i])
+        scaler = MinMaxScaler().fit(data)
+        data = scaler.transform(data)
+        for time_index in range(1, len(date_list)):
+            has_num = int(time_index / skip_day) + 1
+            if has_num >= seq_len:
+                has_num = seq_len
+            pad_num = seq_len - has_num
+            temp = []
+            for i in range(has_num):
+                temp.append(data[time_index-i*skip_day-1])
+            output.append(np.pad(np.array(temp),((pad_num,0),(0,0)),'edge'))
 
     output = np.array(output)
-    # scaler = MinMaxScaler().fit(output)
-    # output = scaler.transform(output)
+    
     return output
 
 def load_data_target(data_type, seq_len, area, time):
     begin_date, end_date = '2015-01-01', '2019-12-18'
     datadir = '../data/spatial/' + data_type
     date_list, date_flag = getEveryDay(begin_date, end_date)
-
+    output = []
     if area == 'all':
         regions = os.listdir(datadir)
         regions.sort()
         date_flag = np.array(date_flag)
         time_indexs = np.where(date_flag == time)[0]
-        output = []
+        
         for region in regions:
             data = np.load(datadir + '/' + region)
+            scaler = MinMaxScaler().fit(data)
+            data = scaler.transform(data)
             output.extend(data[time_indexs])
 
     if time == 'all':
         data = np.load(datadir + '/' + area + '.npy')
-        output = data[seq_len:len(date_list)]
+        scaler = MinMaxScaler().fit(data)
+        data = scaler.transform(data)
+        output = data[1:len(date_list)]
 
     output = np.array(output)
     # scaler = MinMaxScaler().fit(output)
@@ -144,13 +174,15 @@ def load_data_static(data_type, seq_len, area, time):
                 year = 2015 + int(time_index / 365)
                 output.append(poi[region] + user[str(year) + region] + list(festival[time_index]))
     if time == 'all':
-        for i in range(seq_len, len(date_list)):
+        for i in range(1, len(date_list)):
             year = 2015 + int(i / 365)
             output.append(poi[area] + user[str(year) + area] + list(festival[i]))
     
     output = np.array(output)
+    scaler = MinMaxScaler().fit(output)
+    output = scaler.transform(output)
     return output
 
 
 if __name__ == "__main__":
-    dataset = JD(seqlen=7, area='all', time=618)
+    dataset = JD(seqlen=7, area='朝阳区', time='all')

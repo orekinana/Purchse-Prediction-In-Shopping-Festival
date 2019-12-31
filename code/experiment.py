@@ -33,13 +33,13 @@ class Trainer():
         total_tr_loss = 0
         for epoch in range(self.args.epochs):
             tr_loss = 0
-            print(len(self.dataloader))
-            for batch_idx, (temporal, support, static, target) in enumerate(self.dataloader):
-                print('target shape:', target.shape)
+            for batch_idx, (temporal1, temporal2, temporal3, support1, support2, support3, static, target) in enumerate(self.dataloader):
                 data_size = target.shape[1]
                 self.model.train()
-                pred = self.model(temporal, support, static, target)
+                pred = self.model(temporal1, temporal2, temporal3, support1, support2, support3, static, target)
                 loss = self.model.loss_function(target, pred)
+                # print(pred)
+                # print(target)
                 loss = loss.sum()
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PP Example')
     parser.add_argument('--batch-size', type=int, default=512, metavar='N',
                         help='input batch size for training (default: 512)')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N',
+    parser.add_argument('--epochs', type=int, default=50, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='enables CUDA training')                                                              
@@ -89,26 +89,30 @@ if __name__ == "__main__":
 
     # area: all, single area
     # time: all, daily, weekend, holiday
-    threshold = 0.00001
+    threshold = 0.001
     while(1):
         # co-training bettween time and area
         last_loss = 0
         area_cycle = 0
         while(1):
+            print('temporal training!')
             train_time = random.choice(times) # random select a area to training
             current_loss = train.train(area='all', time=train_time) # mode: temporal training
             if abs(current_loss-last_loss) < threshold:
                 break
+            print('last loss:', last_loss, 'current_loss:', current_loss)
             last_loss = current_loss
             area_cycle += 1
 
         last_loss = 0
         time_cycle = 0
         while(1):
+            print('spatial training!')
             train_area = random.choice(areas) # random select a time to training
             current_loss = train.train(area=train_area, time='all') # mode: spatial training
             if abs(current_loss-last_loss) < threshold:
                 break
+            print('last loss:', last_loss, 'current_loss:', current_loss)
             last_loss = current_loss
             time_cycle += 1
         

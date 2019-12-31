@@ -16,12 +16,12 @@ MODEL_CONFIGS = {
         'sub_seq_in':20, 
         'sub_seq_out':10, 
         'mlp_in_t':10, 
-        'mlp_out_t':5, 
-        'tem_att_in':5, 
-        'seq_in':5,
+        'mlp_out_t':20, 
+        'tem_att_in':20, 
+        'seq_in':20,
         'seq_out':10, 
-        'fea_att_in':10, 
-        'fin_in_t':10, 
+        'fea_att_in':20, 
+        'fin_in_t':20, 
         'fin_out_t':5,
 
         # spatial parameter

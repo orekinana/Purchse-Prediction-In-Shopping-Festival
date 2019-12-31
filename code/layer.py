@@ -71,7 +71,6 @@ class MLP_s(nn.Module):
         self.feature_num = input_feature
         self.output_feature = output_feature
         self.fc_list = [nn.Linear(self.input_nums[i], 1) for i in range(len(input_nums))]
-        print(self.fc_list)
         self.fc = nn.Linear(self.feature_num, self.output_feature)
 
     # inputs is a list of tensor which consist of multiple region feature with different size

@@ -87,11 +87,12 @@ class TemporalRepresentation(nn.Module):
         output, (fin_ord, cn) = self.lstm_mixture_order(seq_ord)
         output, (fin_sup, cn) = self.lstm_mixture_support(seq_sup)
 
-        fin_ord = F.relu(fin_ord)
-        fin_sup = F.relu(fin_sup)
+        fin_ord = torch.squeeze(F.relu(fin_ord))
+        fin_sup = torch.squeeze(F.relu(fin_sup))
 
-        fusion_temporal = torch.cat([fin_ord, fin_sup])
-        fusion_temporal = torch.stack([fin_ord, fin_sup]).permute(1,0,2)
+        fusion_temporal = torch.cat([fin_ord, fin_sup], dim=1)
+        
+        # fusion_temporal = torch.stack([fin_ord, fin_sup])
         fusion_temporal, attention_weight_fusion = self.attention_f(embedding_tar, fusion_temporal)
 
         representation = F.relu(fusion_temporal)
@@ -144,7 +145,6 @@ class SpatioRepresentation(nn.Module):
     
     def forward(self, target_data, region_data):
         embedding_region = F.relu(self.mlp_regions(region_data))
-
         representation = F.relu(self.representation_region_layer(embedding_region))
         # embedding_tar = F.relu(self.target_feature_embedding_layer(target_data))
 
@@ -232,12 +232,12 @@ class Generation(nn.Module):
         self.mix_net = torch.nn.Sequential(*self.mix_net)
 
     
-    def forward(self, order_data, support_data, region_data, target_data):
+    def forward(self, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month, region_data, target_data):
         
         # current order and support embedding with shape batch * seqlen * feature
-        support_recent, (hn, cn) = self.support_recent_embedding_layer(support_data)
-        support_week, (hn, cn) = self.support_week_embedding_layer(support_data)
-        support_month, (hn, cn) = self.support_month_embedding_layer(support_data)
+        support_recent, (hn, cn) = self.support_recent_embedding_layer(support_data_recent)
+        support_week, (hn, cn) = self.support_week_embedding_layer(support_data_week)
+        support_month, (hn, cn) = self.support_month_embedding_layer(support_data_month)
 
         fusion_temporal_sup = torch.stack([support_recent, support_week, support_month])
         fusion_temporal_sup = F.relu(self.temporal_support_fusion_mlp(fusion_temporal_sup))
@@ -246,9 +246,9 @@ class Generation(nn.Module):
         support_representation = self.support_representation_layer(support_embedding)
         support_representation = torch.squeeze(support_representation)
 
-        order_recent, (hn, cn) = self.order_recent_embedding_layer(support_data)
-        order_week, (hn, cn) = self.order_week_embedding_layer(support_data)
-        order_month, (hn, cn) = self.order_month_embedding_layer(support_data)
+        order_recent, (hn, cn) = self.order_recent_embedding_layer(order_data_recent)
+        order_week, (hn, cn) = self.order_week_embedding_layer(order_data_week)
+        order_month, (hn, cn) = self.order_month_embedding_layer(order_data_month)
 
         fusion_temporal_order = torch.stack([order_recent, order_week, order_month])
         fusion_temporal_order = F.relu(self.temporal_order_fusion_mlp(fusion_temporal_order))
@@ -280,15 +280,14 @@ class Generation(nn.Module):
         # obtain the temporal and spatial representation of the current region and time slot
         spatio_representation = self.spatio_representation_layer(target_data, region_data)
 
-        # from here !!!!!!!!!!!!!!!!!!!!!!!!!
         temporal_representation = self.temporal_representation_layer(target_data, order_data_recent, order_data_week, order_data_month, \
                  support_data_recent, support_data_week, support_data_month)
 
-        spatio_representation = torch.stack([spatio_representation for i in range(current_representation.shape[0])])
+        # spatio_representation = torch.stack([spatio_representation for i in range(current_representation.shape[0])])
         temporal_representation = torch.stack([temporal_representation for i in range(current_representation.shape[0])])
         
         # concatanate the current feature and spati0-temporal representation of the current region and time slot
-        mix_re = torch.cat([spatio_representation, temporal_representation, current_representation])
+        mix_re = torch.cat([spatio_representation, temporal_representation, current_representation], dim=1)
         # predict the current of the data
         pred_data = self.mix_net(mix_re)
         return pred_data
