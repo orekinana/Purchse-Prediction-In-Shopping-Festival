@@ -25,7 +25,7 @@ class Trainer():
     def train(self, area, time):
 
         # load data
-        dataset = JD(7, area, time)
+        dataset = JD(7, area, time, mode='training')
         kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
         self.dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
 
@@ -38,8 +38,6 @@ class Trainer():
                 self.model.train()
                 pred = self.model(temporal1, temporal2, temporal3, support1, support2, support3, static, target)
                 loss = self.model.loss_function(target, pred)
-                # print(pred)
-                # print(target)
                 loss = loss.sum()
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -48,9 +46,27 @@ class Trainer():
                 print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(epoch, batch_idx * len(target), \
                                                             len(self.dataloader.dataset), 100. * batch_idx / len(self.dataloader.dataset), loss.item() / target.shape[0] / data_size))
             print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, tr_loss / (len(self.dataloader.dataset) * data_size)))
-            total_tr_loss += tr_loss
+            total_tr_loss += tr_loss / (len(self.dataloader.dataset) * data_size)
         total_tr_loss /= self.args.epochs
         return total_tr_loss
+
+    def test(self, area, time):
+        dataset = JD(7, area, time, mode='testing')
+        kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+        self.dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
+
+        data_size = 0
+        tr_loss = 0
+        for batch_idx, (temporal1, temporal2, temporal3, support1, support2, support3, static, target) in enumerate(self.dataloader):
+            data_size = target.shape[1]
+            self.model.train()
+            pred = self.model(temporal1, temporal2, temporal3, support1, support2, support3, static, target)
+            loss = self.model.loss_function(target, pred)
+            loss = loss.sum()
+            tr_loss += loss.item()
+
+        return tr_loss / (len(self.dataloader.dataset) * data_size)
+
     
     def save(self, path):
         torch.save(self.model.state_dict(), path)
@@ -98,11 +114,13 @@ if __name__ == "__main__":
             print('temporal training!')
             train_time = random.choice(times) # random select a area to training
             current_loss = train.train(area='all', time=train_time) # mode: temporal training
+            testing_loss = train.test(area='all', time=train_time)
             if abs(current_loss-last_loss) < threshold:
                 break
             print('last loss:', last_loss, 'current_loss:', current_loss)
             last_loss = current_loss
             area_cycle += 1
+            
 
         last_loss = 0
         time_cycle = 0
@@ -110,6 +128,7 @@ if __name__ == "__main__":
             print('spatial training!')
             train_area = random.choice(areas) # random select a time to training
             current_loss = train.train(area=train_area, time='all') # mode: spatial training
+            testing_loss = train.test(area=train_area, time='all')
             if abs(current_loss-last_loss) < threshold:
                 break
             print('last loss:', last_loss, 'current_loss:', current_loss)

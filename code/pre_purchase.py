@@ -43,7 +43,7 @@ def spatial_partition(purchase_data, cart_data, cate_list, area_flag, date_list)
 if __name__ == "__main__":
 
     data_dir = '../data/'
-    begin_date, end_date = '2015-01-01', '2019-12-18'
+    begin_date, end_date = '2015-01-01', '2019-12-17'
     begin_year, end_year = 2015, 2020
     dates, date_flag = getEveryDay(begin_date, end_date)
 
@@ -68,4 +68,4 @@ if __name__ == "__main__":
             purchase = pd.concat([purchase, purchase_data])
             cart = pd.concat([cart, cart_data])
     print(len(purchase), len(cart))
-    spatial_partition(purchase_data, cart_data, categories, areas, dates)
+    spatial_partition(purchase, cart, categories, areas, dates)

@@ -9,22 +9,34 @@ import torch
 import datetime
 import json
 
+# total dates
+traning_op, training_ed = '2015-01-01', '2018-12-31'
+
+# training date
+testing_op, testing_ed = '2019-01-01', '2019-12-17'
+
+# total regions
+regions = ['怀柔区', '大兴区', '昌平区', '通州区', '石景山区', '延庆区', '顺义区', '西城区', '平谷区', '宣武区', '东城区', '丰台区', '朝阳区', '门头沟', '崇文区', '房山区', '密云区', '海淀区']
 
 class JD(Dataset):
-    def __init__(self, seqlen, area, time):
+    def __init__(self, seqlen, area, time, mode='training'):
+        if mode == 'training':
+            date_op, date_ed = traning_op, training_ed
+        else:
+            date_op, date_ed = testing_op, testing_ed
         self.seqlen = seqlen
 
-        self.historical1 = load_data_dynamic('purchase', seqlen, area, time, 1)
-        self.historical2 = load_data_dynamic('purchase', seqlen, area, time, 7)
-        self.historical3 = load_data_dynamic('purchase', seqlen, area, time, 30)
+        self.historical1 = load_data_dynamic('purchase', seqlen, area, time, 1, date_op, date_ed, mode='training')
+        self.historical2 = load_data_dynamic('purchase', seqlen, area, time, 7, date_op, date_ed, mode='training')
+        self.historical3 = load_data_dynamic('purchase', seqlen, area, time, 30, date_op, date_ed, mode='training')
 
-        self.support1 = load_data_dynamic('cart', seqlen, area, time, 1)
-        self.support2 = load_data_dynamic('cart', seqlen, area, time, 7)
-        self.support3 = load_data_dynamic('cart', seqlen, area, time, 30)
+        self.support1 = load_data_dynamic('cart', seqlen, area, time, 1, date_op, date_ed, mode='training')
+        self.support2 = load_data_dynamic('cart', seqlen, area, time, 7, date_op, date_ed, mode='training')
+        self.support3 = load_data_dynamic('cart', seqlen, area, time, 30, date_op, date_ed, mode='training')
 
-        self.static = load_data_static('static', seqlen, area, time)
+        self.static = load_data_static('static', seqlen, area, time, date_op, date_ed, mode='training')
 
-        self.target = load_data_target('purchase', seqlen, area, time)  
+        self.target = load_data_target('purchase', seqlen, area, time, date_op, date_ed, mode='training')  
 
 
         print('Historical1 data:', self.historical1.shape, 'Historical2 data:', self.historical2.shape, 'Historical3 data:', self.historical3.shape, \
@@ -77,22 +89,16 @@ def getEveryDay(begin_date,end_date):
         begin_date += datetime.timedelta(days=1)
     return date_list, date_flag
 
-def load_data_dynamic(data_type, seq_len, area, time, skip_day):
+def load_data_dynamic(data_type, seq_len, area, time, skip_day, begin_date, end_date, mode):
     # data shape: batch * seqlen * feature
-    begin_date, end_date = '2015-01-01', '2019-12-18'
     datadir = '../data/spatial/' + data_type
     date_list, date_flag = getEveryDay(begin_date, end_date)
     output = []
     if area == 'all':
-        regions = os.listdir(datadir)
-        regions.sort()
         date_flag = np.array(date_flag)
         time_indexs = np.where(date_flag == time)[0]
-        
         for region in regions:
-            data = np.load(datadir + '/' + region) 
-            scaler = MinMaxScaler().fit(data)
-            data = scaler.transform(data)
+            data = np.load(datadir + '/' + mode + '_' + region + '.npy') 
             for time_index in time_indexs:
                 has_num = int(time_index / skip_day) + 1
                 if has_num >= seq_len:
@@ -104,9 +110,7 @@ def load_data_dynamic(data_type, seq_len, area, time, skip_day):
                 output.append(np.pad(np.array(temp),((pad_num,0),(0,0)),'edge'))
         
     if time == 'all': # deal all time in one area
-        data = np.load(datadir + '/' + area + '.npy')
-        scaler = MinMaxScaler().fit(data)
-        data = scaler.transform(data)
+        data = np.load(datadir + '/' + mode + '_' + area + '.npy')
         for time_index in range(1, len(date_list)):
             has_num = int(time_index / skip_day) + 1
             if has_num >= seq_len:
@@ -121,36 +125,26 @@ def load_data_dynamic(data_type, seq_len, area, time, skip_day):
     
     return output
 
-def load_data_target(data_type, seq_len, area, time):
-    begin_date, end_date = '2015-01-01', '2019-12-18'
+def load_data_target(data_type, seq_len, area, time, begin_date, end_date, mode):
     datadir = '../data/spatial/' + data_type
     date_list, date_flag = getEveryDay(begin_date, end_date)
     output = []
     if area == 'all':
-        regions = os.listdir(datadir)
-        regions.sort()
         date_flag = np.array(date_flag)
         time_indexs = np.where(date_flag == time)[0]
         
         for region in regions:
-            data = np.load(datadir + '/' + region)
-            scaler = MinMaxScaler().fit(data)
-            data = scaler.transform(data)
+            data = np.load(datadir + '/' + mode + '_' + region + '.npy')
             output.extend(data[time_indexs])
 
     if time == 'all':
-        data = np.load(datadir + '/' + area + '.npy')
-        scaler = MinMaxScaler().fit(data)
-        data = scaler.transform(data)
+        data = np.load(datadir + '/' + mode + '_' + area + '.npy')
         output = data[1:len(date_list)]
 
     output = np.array(output)
-    # scaler = MinMaxScaler().fit(output)
-    # output = scaler.transform(output)
     return output
 
-def load_data_static(data_type, seq_len, area, time):
-    begin_date, end_date = '2015-01-01', '2019-12-18'
+def load_data_static(data_type, seq_len, area, time, begin_date, end_date, mode):
     datadir = '../data/spatial/' + data_type
     date_list, date_flag = getEveryDay(begin_date, end_date)
 
@@ -160,16 +154,13 @@ def load_data_static(data_type, seq_len, area, time):
     # select by year+region
     with open(datadir + '/user_portrait.json', 'r') as f:
         user = json.load(f)
-    festival = np.load(datadir + '/festival_feature.npy') # select by date (same with date_flag index)
+    festival = np.load(datadir + '/' + mode + '_festival_feature.npy') # select by date (same with date_flag index)
     
     output = []
     if area == 'all':
-        regions = os.listdir('../data/spatial/purchase')
-        regions.sort()
         date_flag = np.array(date_flag)
         time_indexs = np.where(date_flag == time)[0]
         for region in regions:
-            region = region.split('.')[0]
             for time_index in time_indexs:
                 year = 2015 + int(time_index / 365)
                 output.append(poi[region] + user[str(year) + region] + list(festival[time_index]))
@@ -179,10 +170,8 @@ def load_data_static(data_type, seq_len, area, time):
             output.append(poi[area] + user[str(year) + area] + list(festival[i]))
     
     output = np.array(output)
-    scaler = MinMaxScaler().fit(output)
-    output = scaler.transform(output)
     return output
 
 
 if __name__ == "__main__":
-    dataset = JD(seqlen=7, area='朝阳区', time='all')
+    dataset = JD(seqlen=7, area='all', time=12, mode='training')
