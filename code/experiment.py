@@ -43,8 +43,8 @@ class Trainer():
                 loss.backward()
                 self.optimizer.step()
                 tr_loss += loss.item()
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(epoch, batch_idx * len(target), \
-                                                            len(self.dataloader.dataset), 100. * batch_idx / len(self.dataloader.dataset), loss.item() / target.shape[0] / data_size))
+                # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(epoch, batch_idx * len(target), \
+                #                                             len(self.dataloader.dataset), 100. * batch_idx / len(self.dataloader.dataset), loss.item() / target.shape[0] / data_size))
             print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, tr_loss / (len(self.dataloader.dataset) * data_size)))
             total_tr_loss += tr_loss / (len(self.dataloader.dataset) * data_size)
         total_tr_loss /= self.args.epochs
@@ -59,12 +59,12 @@ class Trainer():
         tr_loss = 0
         for batch_idx, (temporal1, temporal2, temporal3, support1, support2, support3, static, target) in enumerate(self.dataloader):
             data_size = target.shape[1]
-            self.model.train()
+            self.model.eval()
             pred = self.model(temporal1, temporal2, temporal3, support1, support2, support3, static, target)
             loss = self.model.loss_function(target, pred)
             loss = loss.sum()
             tr_loss += loss.item()
-
+        print('====> Test Average loss:', tr_loss / (len(self.dataloader.dataset) * data_size))
         return tr_loss / (len(self.dataloader.dataset) * data_size)
 
     
@@ -105,35 +105,39 @@ if __name__ == "__main__":
 
     # area: all, single area
     # time: all, daily, weekend, holiday
-    threshold = 0.001
+    area_threshold = 0.0001
+    time_threshold = 0.0001
     while(1):
         # co-training bettween time and area
-        last_loss = 0
-        area_cycle = 0
-        while(1):
-            print('temporal training!')
-            train_time = random.choice(times) # random select a area to training
-            current_loss = train.train(area='all', time=train_time) # mode: temporal training
-            testing_loss = train.test(area='all', time=train_time)
-            if abs(current_loss-last_loss) < threshold:
-                break
-            print('last loss:', last_loss, 'current_loss:', current_loss)
-            last_loss = current_loss
-            area_cycle += 1
-            
 
         last_loss = 0
         time_cycle = 0
         while(1):
             print('spatial training!')
             train_area = random.choice(areas) # random select a time to training
+            print('selected:', train_area)
             current_loss = train.train(area=train_area, time='all') # mode: spatial training
             testing_loss = train.test(area=train_area, time='all')
-            if abs(current_loss-last_loss) < threshold:
+            if abs(current_loss-last_loss) < area_threshold:
                 break
             print('last loss:', last_loss, 'current_loss:', current_loss)
             last_loss = current_loss
             time_cycle += 1
-        
+
+
+        last_loss = 0
+        area_cycle = 0
+        while(1):
+            print('temporal training!')
+            train_time = random.choice(times) # random select a area to training
+            print('selected:', train_time)
+            current_loss = train.train(area='all', time=train_time) # mode: temporal training
+            testing_loss = train.test(area='all', time=train_time)
+            if abs(current_loss-last_loss) < time_threshold:
+                break
+            print('last loss:', last_loss, 'current_loss:', current_loss)
+            last_loss = current_loss
+            area_cycle += 1
+
         if area_cycle == 0 and time_cycle == 0:
             break

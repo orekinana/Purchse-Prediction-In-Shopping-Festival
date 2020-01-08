@@ -120,66 +120,16 @@ class SpatioRepresentation(nn.Module):
     def __init__(self, order_feature=30, region_feature=13, embedding_out_tar=20, region_fea_list=[23,27,4], \
                     mlp_in=3, mlp_out=5, att_r=5, fc_out=20, fin_in=5, fin_out=5, region_num = 15, sample_L=10):
         super(SpatioRepresentation, self).__init__()
-        # self.L = sample_L
-        # self.region_num = region_num
-
-        # self.target_feature_embedding_layer = nn.Linear(order_feature, embedding_out_tar)
 
         self.mlp_regions = layer.MLP_s(input_nums=region_fea_list, input_feature=mlp_in, output_feature=mlp_out)
 
         self.representation_region_layer = nn.Linear(fin_in, fin_out)
 
-        # self.attention_region = layer.Attention(att_r)
 
-        # self.region_fusion = nn.Linear(region_num, 1)
-
-        # self.feature_fusion = nn.Linear(mlp_out, fc_out)
-
-        # self.representation_layer_mu = nn.Linear(fin_in, fin_out)
-        # self.representation_layer_sigma = nn.Linear(fin_in, fin_out)
-
-    # def reparameterize(self, mu, logvar):
-    #     std = torch.exp(0.5*logvar)
-    #     eps = torch.randn_like(std)
-    #     return mu + eps*std
     
     def forward(self, target_data, region_data):
         embedding_region = F.relu(self.mlp_regions(region_data))
         representation = F.relu(self.representation_region_layer(embedding_region))
-        # embedding_tar = F.relu(self.target_feature_embedding_layer(target_data))
-
-        # regions = []
-        # for i in range(self.region_num):
-        #     regions.append(F.relu(self.mlp_regions(region_data[i])))
-        # regions = torch.stack(regions)
-        # # region_num * batch_size * region_feature -> batch * region_num * region_feature
-        # regions = regions.permute(1,0,2)
-        
-        # att_regions, attention_weight_region = self.attention_region(embedding_tar, regions)
-
-        # # fusion multiple region into one representation
-        # # batch * region_num * region_feature -> batch * region_feature
-        # att_regions = att_regions.permute(0,2,1)
-        # att_regions = F.relu(self.region_fusion(att_regions))
-        # att_regions = torch.squeeze(att_regions.permute(0,2,1))
-
-        # region_representation = F.relu(self.feature_fusion(att_regions))
-        # representation = region_representation * embedding_tar
-     
-        # representation = torch.mean(representation, 0)
-
-        # representation = torch.squeeze(representation)
-
-        # mu = self.representation_layer_mu(representation)
-        # std = self.representation_layer_sigma(representation)
-
-        # representation = []
-        # for i in range(self.L):
-        #     representation.append(self.reparameterize(mu, std))
-
-        # representation = torch.stack(representation)
-        # representation = torch.mean(representation, 0)
-        # representation = torch.squeeze(representation)
 
         return representation
 
@@ -219,10 +169,6 @@ class Generation(nn.Module):
         self.mlp_regions = layer.MLP_s(input_nums=region_fea_list, input_feature=mlp_in_s, output_feature=mlp_out_s)
         self.representation_region_layer = nn.Linear(fin_in_s, fin_out_s)
 
-        # self.mlp_regions = layer.MLP_s(input_nums=region_fea_list, input_feature=mlp_in_s, output_feature=mlp_out_s)
-        # self.region_fusion = nn.Linear(region_num, 1)
-        # self.region_representation_layer = nn.Linear(region_feature, fin_out_s)
-
         self.current_embedding_layer = nn.Linear(2*fin_out_t+fin_out_s, G_input)
 
         self.mix_net = [nn.Linear(G_input+fin_out_t+fin_out_s, G_hidden[0]), nn.ReLU()]
@@ -259,19 +205,6 @@ class Generation(nn.Module):
 
         embedding_region = F.relu(self.mlp_regions(region_data))
         region_representation = F.relu(self.representation_region_layer(embedding_region))
-
-        # regions_embedding = []
-        # for i in range(self.region_num):
-        #     regions_embedding.append(F.relu(self.mlp_regions(region_data[i])))
-        # regions_embedding = torch.stack(regions_embedding)
-        # # region_num * batch_size * region_feature -> batch * region_num * region_feature
-        # regions_embedding = regions_embedding.permute(1,0,2)
-
-        # # batch * region_num * region_feature -> batch * region_feature
-        # regions_embedding = regions_embedding.permute(0,2,1)
-        # regions_embedding = F.relu(self.region_fusion(regions_embedding))
-        # regions_embedding = torch.squeeze(regions_embedding.permute(0,2,1))
-        # region_representation = self.region_representation_layer(regions_embedding)
 
         current_representation = torch.cat([order_representation, support_representation, region_representation], dim=1)
 

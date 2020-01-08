@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import datetime
+import os
 
 def getEveryDay(begin_date,end_date):
     date_list = []
@@ -27,18 +28,21 @@ def getEveryDay(begin_date,end_date):
 
 def spatial_partition(purchase_data, cart_data, cate_list, area_flag, date_list):
     for area in area_flag:
-        area_cart = []
+        if os.path.exists('../data/spatial/purchase/' + area + '.npy'):
+            continue
+        area_purchase = []
         for date in date_list:
-            date_cart = []
+            date_purchase = []
             for cate in cate_list:
-                entry = cart_data[(cart_data['日期'] == date) & (cart_data['市'] == area) & (cart_data['一级类目'] == cate)]['数量']
+                entry = purchase_data[(purchase_data['日期'] == date) & (purchase_data['市'] == area) & (purchase_data['一级类目'] == cate)]['数量']
                 if len(entry) == 0:
-                    date_cart.append(0)
+                    date_purchase.append(0)
                 else:
-                    date_cart.append(int(entry))
-            area_cart.append(date_cart)
+                    date_purchase.append(int(entry))
+            area_purchase.append(date_purchase)
             print(area, date)
-        np.save('../data/spatial/cart/' + area + '.npy', np.array(area_cart))
+        
+        np.save('../data/spatial/purchase/' + area + '.npy', np.array(area_purchase))
 
 if __name__ == "__main__":
 

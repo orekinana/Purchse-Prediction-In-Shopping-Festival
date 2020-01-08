@@ -16,32 +16,32 @@ traning_op, training_ed = '2015-01-01', '2018-12-31'
 testing_op, testing_ed = '2019-01-01', '2019-12-17'
 
 # total regions
-regions = ['怀柔区', '大兴区', '昌平区', '通州区', '石景山区', '延庆区', '顺义区', '西城区', '平谷区', '宣武区', '东城区', '丰台区', '朝阳区', '门头沟', '崇文区', '房山区', '密云区', '海淀区']
+regions = ['怀柔区', '昌平区', '大兴区', '朝阳区', '延庆区', '宣武区', '石景山区', '平谷区', '西城区', '东城区', '顺义区', '通州区', '丰台区']
 
 class JD(Dataset):
-    def __init__(self, seqlen, area, time, mode='training'):
+    def __init__(self, seqlen, area, time, mode):
         if mode == 'training':
             date_op, date_ed = traning_op, training_ed
         else:
             date_op, date_ed = testing_op, testing_ed
         self.seqlen = seqlen
 
-        self.historical1 = load_data_dynamic('purchase', seqlen, area, time, 1, date_op, date_ed, mode='training')
-        self.historical2 = load_data_dynamic('purchase', seqlen, area, time, 7, date_op, date_ed, mode='training')
-        self.historical3 = load_data_dynamic('purchase', seqlen, area, time, 30, date_op, date_ed, mode='training')
+        self.historical1 = load_data_dynamic('purchase', seqlen, area, time, 1, date_op, date_ed, mode)
+        self.historical2 = load_data_dynamic('purchase', seqlen, area, time, 7, date_op, date_ed, mode)
+        self.historical3 = load_data_dynamic('purchase', seqlen, area, time, 30, date_op, date_ed, mode)
 
-        self.support1 = load_data_dynamic('cart', seqlen, area, time, 1, date_op, date_ed, mode='training')
-        self.support2 = load_data_dynamic('cart', seqlen, area, time, 7, date_op, date_ed, mode='training')
-        self.support3 = load_data_dynamic('cart', seqlen, area, time, 30, date_op, date_ed, mode='training')
+        self.support1 = load_data_dynamic('cart', seqlen, area, time, 1, date_op, date_ed, mode)
+        self.support2 = load_data_dynamic('cart', seqlen, area, time, 7, date_op, date_ed, mode)
+        self.support3 = load_data_dynamic('cart', seqlen, area, time, 30, date_op, date_ed, mode)
 
-        self.static = load_data_static('static', seqlen, area, time, date_op, date_ed, mode='training')
+        self.static = load_data_static('static', seqlen, area, time, date_op, date_ed, mode)
 
-        self.target = load_data_target('purchase', seqlen, area, time, date_op, date_ed, mode='training')  
+        self.target = load_data_target('purchase', seqlen, area, time, date_op, date_ed, mode)  
 
 
-        print('Historical1 data:', self.historical1.shape, 'Historical2 data:', self.historical2.shape, 'Historical3 data:', self.historical3.shape, \
-                'Support1 data:', self.support1.shape, 'Support2 data:', self.support2.shape, 'Support3 data:', self.support3.shape, \
-                    'Target data:', self.target.shape, 'Static data:', self.static.shape)
+        # print('Historical1 data:', self.historical1.shape, 'Historical2 data:', self.historical2.shape, 'Historical3 data:', self.historical3.shape, \
+        #         'Support1 data:', self.support1.shape, 'Support2 data:', self.support2.shape, 'Support3 data:', self.support3.shape, \
+        #             'Target data:', self.target.shape, 'Static data:', self.static.shape)
 
     def __getitem__(self, index):
         historical1 = self.historical1[index]
@@ -170,6 +170,7 @@ def load_data_static(data_type, seq_len, area, time, begin_date, end_date, mode)
             output.append(poi[area] + user[str(year) + area] + list(festival[i]))
     
     output = np.array(output)
+    output = MinMaxScaler().fit_transform(output)
     return output
 
 
