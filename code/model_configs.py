@@ -21,9 +21,10 @@ MODEL_CONFIGS = {
         'seq_in':20,
         'seq_out':10, 
         'fea_att_in':20, 
+        'linear_out':20,
         'fin_in_t':20, 
-        'fin_out_t':5,
-
+        'fin_out_t':10, 
+        
         # spatial parameter
         'embedding_out_tar':20, 
         'region_fea_list':[23,27,4], 

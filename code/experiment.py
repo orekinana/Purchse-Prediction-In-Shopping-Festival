@@ -112,18 +112,19 @@ if __name__ == "__main__":
 
         last_loss = 0
         time_cycle = 0
-        while(1):
+        # while(1):
+        for area in areas:
             print('spatial training!')
-            train_area = random.choice(areas) # random select a time to training
+            # train_area = random.choice(areas) # random select a time to training
+            train_area = area
             print('selected:', train_area)
             current_loss = train.train(area=train_area, time='all') # mode: spatial training
             testing_loss = train.test(area=train_area, time='all')
-            if abs(current_loss-last_loss) < area_threshold:
-                break
+            # if abs(current_loss-last_loss) < area_threshold:
+            #     break
             print('last loss:', last_loss, 'current_loss:', current_loss)
             last_loss = current_loss
             time_cycle += 1
-
 
         last_loss = 0
         area_cycle = 0

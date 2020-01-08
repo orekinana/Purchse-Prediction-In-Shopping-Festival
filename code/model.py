@@ -9,9 +9,13 @@ class TemporalRepresentation(nn.Module):
 
     def __init__(self, order_feature=30, support_feature=30, embedding_out=50, sub_seq_in=50, sub_seq_out=40, \
                     mlp_in=40, mlp_out=30, tem_att_in=30, seq_in=30, seq_out=10, fea_att_in=10, \
-                        fin_in=10, fin_out=5, sample_L=10, time_num=3):
+                        linear_out=20, fin_in=10, fin_out=5, sample_L=10, time_num=3):
         super(TemporalRepresentation, self).__init__()
         self.time_num = time_num
+
+        # Linear part
+        self.linear_time = nn.Linear(7, 1)
+        self.feature_linear = nn.Linear(time_num*(order_feature+support_feature), 20)
 
         self.L = sample_L
         # embedding data feature
@@ -41,6 +45,8 @@ class TemporalRepresentation(nn.Module):
         self.representation_layer_mu = nn.Linear(fin_in, fin_out)
         self.representation_layer_sigma = nn.Linear(fin_in, fin_out)
 
+        self.linear_and_nonlinear_fusion = nn.Linear(linear_out+fin_in, fin_in)
+
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
@@ -48,6 +54,10 @@ class TemporalRepresentation(nn.Module):
 
     def forward(self, target_data, order_data_recent, order_data_week, order_data_month, \
                  support_data_recent, support_data_week, support_data_month):
+
+        linear_time = self.linear_time(torch.cat([order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month], dim=2).permute(0,2,1))
+        linear_time = torch.squeeze(linear_time)
+        linear_feature = self.feature_linear(linear_time)
 
         embedding_ord_recent = F.relu(self.order_feature_embedding_layer(order_data_recent))
         embedding_ord_week = F.relu(self.order_feature_embedding_layer(order_data_week))
@@ -96,7 +106,7 @@ class TemporalRepresentation(nn.Module):
         fusion_temporal, attention_weight_fusion = self.attention_f(embedding_tar, fusion_temporal)
 
         representation = F.relu(fusion_temporal)
-
+        representation = self.linear_and_nonlinear_fusion(torch.cat([representation, linear_feature], dim=1))
         representation = torch.squeeze(representation)
         representation = torch.mean(representation, 0)
 
@@ -111,6 +121,8 @@ class TemporalRepresentation(nn.Module):
         representation = torch.mean(representation, 0)
 
         representation = torch.squeeze(representation)
+        
+        
 
         return representation
 
@@ -137,7 +149,7 @@ class SpatioRepresentation(nn.Module):
 class Generation(nn.Module):
 
     def __init__(self, order_feature=30, support_feature=30, region_feature=13, G_input=5, G_hidden=[25,50], G_output=30, sample_L=10, time_num=3, \
-                        embedding_out=50, sub_seq_in=50, sub_seq_out=40, mlp_in_t=40, mlp_out_t=30, \
+                        embedding_out=50, sub_seq_in=50, sub_seq_out=40, mlp_in_t=40, mlp_out_t=30, linear_out=20, \
                         tem_att_in=30, seq_in=30, seq_out=10, fea_att_in=10, fin_in_t=10, fin_out_t=5, \
                         embedding_out_tar=20, region_fea_list=[23,27,4], mlp_in_s=10, mlp_out_s=5, \
                         att_r=5, fc_out=20, fin_in_s=5, fin_out_s=5, region_num=15):
@@ -146,8 +158,12 @@ class Generation(nn.Module):
 
         self.time_num = time_num
 
+        # Linear part
+        self.linear_time = nn.Linear(7, 1)
+        self.feature_linear = nn.Linear(time_num*(order_feature+support_feature), linear_out)
+
         self.temporal_representation_layer = TemporalRepresentation(order_feature, support_feature, embedding_out, sub_seq_in, sub_seq_out, mlp_in_t, mlp_out_t, \
-                                                                        tem_att_in, seq_in, seq_out, fea_att_in, fin_in_t, fin_out_t, sample_L, time_num)
+                                                                        tem_att_in, seq_in, seq_out, fea_att_in, linear_out, fin_in_t, fin_out_t, sample_L, time_num)
 
         self.spatio_representation_layer = SpatioRepresentation(order_feature, region_feature, embedding_out_tar, region_fea_list, mlp_in_s, mlp_out_s, \
                                                                     att_r, fc_out, fin_in_s, fin_out_s, region_num, sample_L)
@@ -171,7 +187,7 @@ class Generation(nn.Module):
 
         self.current_embedding_layer = nn.Linear(2*fin_out_t+fin_out_s, G_input)
 
-        self.mix_net = [nn.Linear(G_input+fin_out_t+fin_out_s, G_hidden[0]), nn.ReLU()]
+        self.mix_net = [nn.Linear(G_input+fin_out_t+fin_out_s+linear_out, G_hidden[0]), nn.ReLU()]
         for i in range(len(G_hidden)-1):
             self.mix_net.extend([nn.Linear(G_hidden[i], G_hidden[i+1]), nn.ReLU()])
         self.mix_net.extend([nn.Linear(G_hidden[-1], G_output), nn.ReLU()])
@@ -179,6 +195,10 @@ class Generation(nn.Module):
 
     
     def forward(self, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month, region_data, target_data):
+
+        linear_time = self.linear_time(torch.cat([order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month], dim=2).permute(0,2,1))
+        linear_time = torch.squeeze(linear_time)
+        linear_feature = self.feature_linear(linear_time)
         
         # current order and support embedding with shape batch * seqlen * feature
         support_recent, (hn, cn) = self.support_recent_embedding_layer(support_data_recent)
@@ -220,7 +240,7 @@ class Generation(nn.Module):
         temporal_representation = torch.stack([temporal_representation for i in range(current_representation.shape[0])])
         
         # concatanate the current feature and spati0-temporal representation of the current region and time slot
-        mix_re = torch.cat([spatio_representation, temporal_representation, current_representation], dim=1)
+        mix_re = torch.cat([spatio_representation, temporal_representation, current_representation, linear_feature], dim=1)
         # predict the current of the data
         pred_data = self.mix_net(mix_re)
         return pred_data
