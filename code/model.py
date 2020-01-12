@@ -7,9 +7,8 @@ import layer
 
 class TemporalRepresentation(nn.Module):
 
-    def __init__(self, order_feature=30, support_feature=30, embedding_out=50, sub_seq_in=50, sub_seq_out=40, \
-                    mlp_in=40, mlp_out=30, tem_att_in=30, seq_in=30, seq_out=10, fea_att_in=10, \
-                        linear_out=20, fin_in=10, fin_out=5, sample_L=10, time_num=3):
+    def __init__(self, order_feature=30, support_feature=30, embedding_out=50, sub_seq_in=50, sub_seq_out=40, mlp_in=40, mlp_out=30, tem_att_in=30, \
+                    seq_in=30, seq_out=10, fea_att_in=10, linear_out=20, fin_in=10, fin_out=5, sample_L=10, time_num=3):
         super(TemporalRepresentation, self).__init__()
         self.time_num = time_num
 
@@ -52,8 +51,7 @@ class TemporalRepresentation(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps*std
 
-    def forward(self, target_data, order_data_recent, order_data_week, order_data_month, \
-                 support_data_recent, support_data_week, support_data_month):
+    def forward(self, target_data, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month):
 
         linear_time = self.linear_time(torch.cat([order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month], dim=2).permute(0,2,1))
         linear_time = torch.squeeze(linear_time)
@@ -124,7 +122,7 @@ class TemporalRepresentation(nn.Module):
         
         
 
-        return representation
+        return representation, mu, std
 
 
 class SpatioRepresentation(nn.Module):                          
@@ -139,7 +137,7 @@ class SpatioRepresentation(nn.Module):
 
 
     
-    def forward(self, target_data, region_data):
+    def forward(self, region_data):
         embedding_region = F.relu(self.mlp_regions(region_data))
         representation = F.relu(self.representation_region_layer(embedding_region))
 
@@ -148,11 +146,8 @@ class SpatioRepresentation(nn.Module):
 
 class Generation(nn.Module):
 
-    def __init__(self, order_feature=30, support_feature=30, region_feature=13, G_input=5, G_hidden=[25,50], G_output=30, sample_L=10, time_num=3, \
-                        embedding_out=50, sub_seq_in=50, sub_seq_out=40, mlp_in_t=40, mlp_out_t=30, linear_out=20, \
-                        tem_att_in=30, seq_in=30, seq_out=10, fea_att_in=10, fin_in_t=10, fin_out_t=5, \
-                        embedding_out_tar=20, region_fea_list=[23,27,4], mlp_in_s=10, mlp_out_s=5, \
-                        att_r=5, fc_out=20, fin_in_s=5, fin_out_s=5, region_num=15):
+    def __init__(self, order_feature=30, support_feature=30, region_feature=13, G_input=5, G_hidden=[25,50], G_output=30, sample_L=10, time_num=3, linear_out=20, \
+                    sub_seq_out=40, mlp_in_t=40, mlp_out_t=30, seq_in=30, seq_out=10,fin_out_t=5, region_fea_list=[23,27,4], mlp_in_s=10, mlp_out_s=5, fin_in_s=5, fin_out_s=5):
         
         super(Generation, self).__init__()
 
@@ -161,12 +156,6 @@ class Generation(nn.Module):
         # Linear part
         self.linear_time = nn.Linear(7, 1)
         self.feature_linear = nn.Linear(time_num*(order_feature+support_feature), linear_out)
-
-        self.temporal_representation_layer = TemporalRepresentation(order_feature, support_feature, embedding_out, sub_seq_in, sub_seq_out, mlp_in_t, mlp_out_t, \
-                                                                        tem_att_in, seq_in, seq_out, fea_att_in, linear_out, fin_in_t, fin_out_t, sample_L, time_num)
-
-        self.spatio_representation_layer = SpatioRepresentation(order_feature, region_feature, embedding_out_tar, region_fea_list, mlp_in_s, mlp_out_s, \
-                                                                    att_r, fc_out, fin_in_s, fin_out_s, region_num, sample_L)
 
         self.support_recent_embedding_layer = nn.LSTM(support_feature, sub_seq_out, num_layers=1, batch_first=True)
         self.support_week_embedding_layer = nn.LSTM(support_feature, sub_seq_out, num_layers=1, batch_first=True)
@@ -194,8 +183,9 @@ class Generation(nn.Module):
         self.mix_net = torch.nn.Sequential(*self.mix_net)
 
     
-    def forward(self, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month, region_data, target_data):
+    def forward(self, temporal_representation, spatio_representation, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month, region_data, target_data):
 
+        # current linear representation of temporal data
         linear_time = self.linear_time(torch.cat([order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month], dim=2).permute(0,2,1))
         linear_time = torch.squeeze(linear_time)
         linear_feature = self.feature_linear(linear_time)
@@ -230,13 +220,6 @@ class Generation(nn.Module):
 
         current_representation = self.current_embedding_layer(current_representation)
 
-        # obtain the temporal and spatial representation of the current region and time slot
-        spatio_representation = self.spatio_representation_layer(target_data, region_data)
-
-        temporal_representation = self.temporal_representation_layer(target_data, order_data_recent, order_data_week, order_data_month, \
-                 support_data_recent, support_data_week, support_data_month)
-
-        # spatio_representation = torch.stack([spatio_representation for i in range(current_representation.shape[0])])
         temporal_representation = torch.stack([temporal_representation for i in range(current_representation.shape[0])])
         
         # concatanate the current feature and spati0-temporal representation of the current region and time slot
@@ -245,9 +228,53 @@ class Generation(nn.Module):
         pred_data = self.mix_net(mix_re)
         return pred_data
 
-    def loss_function(self, target_data, pred_data):
-        MSE = torch.nn.MSELoss(reduce=False, size_average=False)
-        
-        return MSE(target_data, pred_data)
 
+class MST(nn.Module):
+
+    def __init__(self, order_feature=30, support_feature=30, region_feature=13,G_input=10,G_hidden=[10,20], G_output=30, sample_L=10, time_num=3,embedding_out=20, sub_seq_in=20, sub_seq_out=10, mlp_in_t=10, mlp_out_t=20, tem_att_in=20, \
+                    seq_in=20,seq_out=10, fea_att_in=20, linear_out=20,fin_in_t=20,fin_out_t=10,embedding_out_tar=20, region_fea_list=[23,27,4], mlp_in_s=3,mlp_out_s=10,att_r=10, fc_out=20, fin_in_s=10, fin_out_s=10, region_num=15):
         
+        super(MST, self).__init__()
+
+        self.temporal_representation_layer = TemporalRepresentation(order_feature, support_feature, embedding_out, sub_seq_in, sub_seq_out, mlp_in_t, mlp_out_t, \
+                                                            tem_att_in, seq_in, seq_out, fea_att_in, linear_out, fin_in_t, fin_out_t, sample_L, time_num)
+
+        self.spatio_representation_layer = SpatioRepresentation(order_feature, region_feature, embedding_out_tar, region_fea_list, mlp_in_s, mlp_out_s, \
+                                                                    att_r, fc_out, fin_in_s, fin_out_s, region_num, sample_L)
+        
+        self.generation_layer = Generation(order_feature, support_feature, region_feature, G_input, G_hidden, G_output, sample_L, time_num, linear_out, \
+                                            sub_seq_out, mlp_in_t, mlp_out_t, seq_in, seq_out,fin_out_t, region_fea_list, mlp_in_s, mlp_out_s, fin_in_s, fin_out_s)
+    
+    def temporal_representation(self, target_data, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month):
+
+        temporal_representation, temporal_mu, temporal_sigma = self.temporal_representation_layer(target_data, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month)
+
+        return temporal_representation, temporal_mu, temporal_sigma
+
+    def spatial_representation(self, region_data):
+
+        spatial_representation = self.spatio_representation_layer(region_data)
+
+        return spatial_representation
+    
+    def generation(self, temporal_representation, spatial_representation, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month, region_data, target_data):
+        
+        pred = self.generation_layer(temporal_representation, spatial_representation, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month, region_data, target_data)
+
+        return pred
+
+    def forward(self, target_data, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month, region_data):
+
+        temporal_representation, temporal_mu, temporal_sigma = self.temporal_representation(target_data, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month)
+        
+        spatial_representation = self.spatial_representation(region_data)
+
+        pred = self.generation(temporal_representation, spatial_representation, order_data_recent, order_data_week, order_data_month, support_data_recent, support_data_week, support_data_month, region_data, target_data)
+
+        return pred, spatial_representation, temporal_representation, temporal_mu, temporal_sigma
+
+    def loss(self, target, pred, mu, sigma):
+        MSE = torch.nn.MSELoss(reduce=False, size_average=False)
+        MAE = nn.L1Loss()
+        KLD = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp())
+        return MSE(target, pred), MSE(target, pred) + 0.1*KLD
