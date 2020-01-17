@@ -122,38 +122,49 @@ if __name__ == "__main__":
 
     # area: all, single area
     # time: all, daily, weekend, holiday
-    train.load('../data/mst.model')
+    train.load('../data/S-mst.model')
     for time in times:
         print(time)
         temporal_re = train.generate_temporal(area='all', time=time)
         testing_loss = train.test('all', time, temporal_re)
     exit()
-    
+
+    last_loss = 100000
     while(1):
         # co-training bettween time and area
         try:
+            
             for area in areas:
                 print('spatial training!')
                 # train_area = random.choice(areas) # random select a time to training
                 train_area = area
                 print('selected:', train_area)
-                current_loss, spatial_re, temporal_re = train.train(area=train_area, time='all') # mode: spatial training
+                current_loss, spatial_re, temporal_re = train.train(area=train_area, time='all') # mode : spatial training
                 area_re[area] = temporal_re
-
-            for time in times:
-                print('temporal training!')
-                # train_time = random.choice(times) # random select a area to training
-                train_time = time
-                print('selected:', train_time)
-                current_loss, spatial_re, temporal_re = train.train(area='all', time=train_time) # mode: temporal training
-                time_re[time] = temporal_re
             
-            for time in times:
-                train_time = time
-                print('selected:', train_time)
-                testing_loss = train.test('all', train_time, time_re[time])
+            for area in areas:
+                train_area = area
+                print('selected:', train_area)
+                testing_loss = train.test(train_area, 'all', area_re[area])
+
+            # for time in times:
+            #     print('temporal training!')
+            #     # train_time = random.choice(times) # random select a area to training
+            #     train_time = time
+            #     print('selected:', train_time)
+            #     current_loss, spatial_re, temporal_re = train.train(area='all', time=train_time) # mode: temporal training
+            #     time_re[time] = temporal_re
+            
+            # for time in times:
+            #     train_time = time
+            #     print('selected:', train_time)
+            #     testing_loss = train.test('all', train_time, time_re[time])
+
+            if testing_loss > last_loss:
+                train.save('../data/S-mst.model')
+                exit()
+            last_loss = testing_loss
 
         except:
-            train.save('../data/mst.model')
+            train.save('../data/S-mst.model')
             exit()
-

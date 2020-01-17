@@ -38,6 +38,23 @@ class JD(Dataset):
 
         self.target = load_data_target('purchase', seqlen, area, time, date_op, date_ed, mode)  
 
+        # print('Historical1 data:', self.historical1.shape, 'Historical2 data:', self.historical2.shape, 'Historical3 data:', self.historical3.shape, \
+        #         'Support1 data:', self.support1.shape, 'Support2 data:', self.support2.shape, 'Support3 data:', self.support3.shape, \
+        #             'Target data:', self.target.shape, 'Static data:', self.static.shape)
+
+        # if mode == 'training':
+        
+        #     self.historical1 = kshot(self.historical1, 2, area, time)
+        #     self.historical2 = kshot(self.historical2, 2, area, time)
+        #     self.historical3 = kshot(self.historical3, 2, area, time)
+
+        #     self.support1 = kshot(self.support1, 2, area, time)
+        #     self.support2 = kshot(self.support2, 2, area, time)
+        #     self.support3 = kshot(self.support3, 2, area, time)
+
+        #     self.static = kshot(self.static, 2, area, time)
+
+        #     self.target = kshot(self.target, 2, area, time)  
 
         # print('Historical1 data:', self.historical1.shape, 'Historical2 data:', self.historical2.shape, 'Historical3 data:', self.historical3.shape, \
         #         'Support1 data:', self.support1.shape, 'Support2 data:', self.support2.shape, 'Support3 data:', self.support3.shape, \
@@ -62,6 +79,18 @@ class JD(Dataset):
 
     def __len__(self):
         return len(self.target)
+
+def kshot(data, shot_num, area, time):
+    if time == 'all':
+        date_list, date_flag = getEveryDay(traning_op,training_ed)
+        total_indexs = [i for i in range(len(date_flag))]
+        del_indexs = np.where((np.array(date_flag) != 0) & (np.array(date_flag) != 1) & (np.array(date_flag) != -1))[0][:50*shot_num]
+        indexs = np.array(list(set(total_indexs) - set(del_indexs)))[1:]-1
+        data = data[indexs]
+    if area == 'all':
+        data = data[int(data.shape[0] / 4 * shot_num):]
+    return data
+
 
 def getEveryDay(begin_date,end_date):
     date_list = []
@@ -175,4 +204,4 @@ def load_data_static(data_type, seq_len, area, time, begin_date, end_date, mode)
 
 
 if __name__ == "__main__":
-    dataset = JD(seqlen=7, area='all', time=12, mode='training')
+    dataset = JD(seqlen=7, area='朝阳区', time='all', mode='training')
